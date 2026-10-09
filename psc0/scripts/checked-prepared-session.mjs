@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { freezeCompilerDataGraph } from './compiler-data-boundary.mjs';
 
 import { ownedCheckedIdentity } from './checked-kernel-identity.mjs';
 export { leanCheckedIdentity } from './checked-kernel-identity.mjs';
@@ -15,26 +16,11 @@ export function unwrapCompilerResult(result, stage) {
   throw new Error(`PSC2_CHECKED_${stage}_RESULT_SHAPE`);
 }
 
-function freezeGraph(root) {
-  const pending = [root]; const seen = new WeakSet();
-  while (pending.length) {
-    const value = pending.pop();
-    if (value === null || typeof value !== 'object' || seen.has(value)) continue;
-    seen.add(value);
-    const proto = Object.getPrototypeOf(value);
-    if (proto !== null && proto !== Object.prototype && proto !== Array.prototype) {
-      throw new Error('PSC2_CHECKED_UNSUPPORTED_OBJECT');
-    }
-    for (const key of Reflect.ownKeys(value)) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (!Object.hasOwn(descriptor, 'value')) throw new Error('PSC2_CHECKED_ACCESSOR_FORBIDDEN');
-      if (typeof descriptor.value === 'function') throw new Error('PSC2_CHECKED_FUNCTION_FORBIDDEN');
-      pending.push(descriptor.value);
-    }
-    Object.freeze(value);
-  }
-  return root;
-}
+const freezeGraph = root => freezeCompilerDataGraph(root, {
+  nonDataObject: 'PSC2_CHECKED_UNSUPPORTED_OBJECT',
+  accessorForbidden: 'PSC2_CHECKED_ACCESSOR_FORBIDDEN',
+  functionForbidden: 'PSC2_CHECKED_FUNCTION_FORBIDDEN',
+});
 
 function admissionsFrom(compiler, prepared) {
   const source = unwrapCompilerResult(compiler.psCompilerAdmissionsFromPrepared(prepared), 'ADMISSIONS');
