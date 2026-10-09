@@ -1,33 +1,14 @@
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
+import { freezeCompilerDataGraph } from "./compiler-data-boundary.mjs";
 
 const hash = (text) => createHash("sha256").update(text, "utf8").digest("hex");
 
-function freezeCompilerData(root) {
-  const pending = [root];
-  const seen = new WeakSet();
-  while (pending.length) {
-    const value = pending.pop();
-    if (value === null || typeof value !== "object" || seen.has(value)) continue;
-    seen.add(value);
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== null && prototype !== Object.prototype && prototype !== Array.prototype) {
-      throw new Error("PSC0_PREPARATION_NON_DATA_OBJECT");
-    }
-    for (const key of Reflect.ownKeys(value)) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (!Object.hasOwn(descriptor, "value")) {
-        throw new Error("PSC0_PREPARATION_ACCESSOR_FORBIDDEN");
-      }
-      if (typeof descriptor.value === "function") {
-        throw new Error("PSC0_PREPARATION_FUNCTION_FORBIDDEN");
-      }
-      pending.push(descriptor.value);
-    }
-    Object.freeze(value);
-  }
-  return root;
-}
+const freezeCompilerData = root => freezeCompilerDataGraph(root, {
+  nonDataObject: "PSC0_PREPARATION_NON_DATA_OBJECT",
+  accessorForbidden: "PSC0_PREPARATION_ACCESSOR_FORBIDDEN",
+  functionForbidden: "PSC0_PREPARATION_FUNCTION_FORBIDDEN",
+});
 
 function diagnosticJson(value) {
   return JSON.stringify(value, (_key, item) => {
